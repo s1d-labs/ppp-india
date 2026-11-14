@@ -1,27 +1,76 @@
-"""What this family scrapes. Change this file first.
+"""What this family scrapes: DEA's PPP portal www.pppinindia.gov.in (PPPAC approvals, VGF, concession agreements, the PPP
+pipeline and the infrastructure project database), and the documents it links (Records of Discussion, signed agreements).
 
-FAMILY must equal the repo name (s1d-labs/<FAMILY>) and the family the hub owner added on scrape.s1d.me/runners.
-Each project is one queue of work on one site; `target` is the host it hits (the hub caps workers per target).
+FAMILY equals the repo name (s1d-labs/ppp-india). After a change here, run the Setup workflow (Actions -> setup). seed_queue keeps
+existing keys, so a new ROUND (the weekly setup sets ROUND=<ISO week>) fetches every list page again, and a new DOCS_ROUND (month)
+downloads the documents again. The server's If-Modified-Since only matches an exact date (no 304 for older files), and a task
+cannot read what it stored before, so a monthly document round is the cheap way to catch replaced files (the bucket is
+content-addressed: an unchanged file costs bandwidth, not space).
+The site answers GitHub's runners and the team box directly: no proxy. It refuses HEAD requests (403); GET only.
 """
 import json
+import os
 from pathlib import Path
 
 FAMILY = json.loads((Path(__file__).parent / "scrape.json").read_text())["family"]
+ROUND = os.environ.get("ROUND") or "2026-W46"
+DOCS_ROUND = os.environ.get("DOCS_ROUND") or "2026-11"
+SITE = "https://www.pppinindia.gov.in/"
+
+# list page -> (table rows, document links) on 2026-11-14. Rows give progress; pages with documents also get docs items.
+PAGES = {
+    # PPPAC (central projects appraisal) and its meetings
+    "pppac_projects_list": (425, 151), "pppac_projects_summary": (95, 0), "pppac_meetings": (144, 154), "pppac": (6, 11),
+    "consolidated": (998, 172),
+    # VGF (Empowered Committee / Empowered Institution) and IIPDF
+    "vgf_inprinciple_project_list": (253, 88), "vgf_final_project_list": (72, 66), "vgf_projects_summary": (104, 0),
+    "vgf_projects_final_summary": (62, 0), "ec_meetings": (57, 63), "ei_meetings": (84, 84), "vgfguidelines": (12, 24),
+    "iipdf_projects": (31, 25), "iipdf_projects_summary": (26, 0), "iipdf_meetings": (32, 32), "guidelines_for_iipdf": (6, 13),
+    "sfc_projects": (0, 0), "state-projects": (0, 0), "reit_invit": (0, 0),
+    # agreements and bidding documents
+    "signed_concession_agreements": (220, 92), "draft_concession_agreements": (0, 2), "model_concession_agreement": (7, 7),
+    "model_request_proposal": (8, 8), "model_request_qualification": (1, 1), "bidding-doc": (0, 1),
+    "bidding_doc_detail": (0, 16), "bidding_doc_ahp": (0, 4), "tenders": (19, 24), "circulars_and_orders": (41, 42),
+    "guidance_material_and_reference_doc": (0, 34), "contigent-liability-toolkit": (0, 2), "": (0, 29),
+    # infrastructure project database (all 9,243 projects; the three mode pages show only their first 100)
+    "all_infrastructure_projects": (9243, 0), "goverment_infrastructure_projects_ppp": (100, 0),
+    "goverment_infrastructure_projects_traditional_procurement": (100, 0), "private_sector_infrastructure_projects": (100, 0),
+    "goverment_infrastructure_projects": (100, 0), "authority_wise_summary_report": (100, 0),
+    "sector_wise_summary_report": (28, 0), "state_wise_summary_report": (35, 0), "status_wise_summary_report": (5, 0),
+    "year_wise_summary_report": (36, 0),
+    # PPP pipeline: central ministries and states
+    "ppp-projects-pipeline": (2, 0), "ppp-projects-pipeline-ministries": (8, 0), "ppp-projects-pipeline-states": (23, 0),
+}
+PIPELINE_DEPTS = ["mopower", "moca", "mopng", "dowrgr", "mopsw", "dpiit", "railways", "morth"]
+PIPELINE_STATES = ["andaman and nicobar islands", "andhra_pradesh", "arunachal_pradesh", "assam", "chhattisgarh", "goa", "gujarat",
+                   "haryana", "himachal_pradesh", "jammu and kashmir", "karnataka", "madhya_pradesh", "nagaland", "odisha",
+                   "puducherry", "punjab", "rajasthan", "sikkim", "tamil_nadu", "telangana", "tripura", "uttar_pradesh", "west_bengal"]
+PAGES.update({f"ppp-projects-pipeline-department?dept={d}": (30, 0) for d in PIPELINE_DEPTS})
+PAGES.update({f"ppp-projects-pipeline-states-yearwise?state={s.replace(' ', '%20')}": (35, 0) for s in PIPELINE_STATES})
+DOCS_PER_SHARD = 60
+
+
+def portal_items():
+    items = [{"key": f"{ROUND}/page/{path or 'home'}", "payload": {"kind": "page", "path": path, "round": ROUND, "expected": n + 1}}
+             for path, (n, _) in PAGES.items()]
+    for path, (_, d) in PAGES.items():
+        shards = max(1, -(-d // DOCS_PER_SHARD))
+        items += [{"key": f"{DOCS_ROUND}/docs/{path or 'home'}/{k}-of-{shards}",
+                   "payload": {"kind": "docs", "path": path, "shard": k, "shards": shards, "round": DOCS_ROUND,
+                               "expected": max(1, d // shards)}}
+                  for k in range(shards) if d]
+    return items
+
 
 PROJECTS = [
     {
-        "name": f"{FAMILY}-books",              # project names: 2-64 chars of a-z 0-9 - _, start them with the family name
-        "title": "Books to Scrape catalogue",
-        "task": "crawl",                         # a task from scrape.json
-        "target": "books.toscrape.com",
-        "env": {"SITE": "https://books.toscrape.com"},
-        "probe": f"{FAMILY}:books.toscrape.com",
-        "unit_label": "page", "record_label": "book",
-        # the queue: one item per catalogue page; `expected` (records per item) gives progress and ETAs on the dashboard
-        "items": [{"key": f"page-{n}", "payload": {"url": f"https://books.toscrape.com/catalogue/page-{n}.html", "expected": 20}}
-                  for n in range(1, 51)],
+        "name": f"{FAMILY}-portal",
+        "title": "PPP India portal (DEA): PPPAC, VGF, concession agreements, pipeline, project database, and their documents",
+        "task": "crawl", "target": "www.pppinindia.gov.in", "env": {"SITE": SITE}, "probe": f"{FAMILY}:www.pppinindia.gov.in",
+        "unit_label": "page", "record_label": "row", "threads": 1, "delay_ms": 500, "max_workers": 2,
+        "items": portal_items(),
     },
 ]
 
-# health checks the hub runs every minute; work for a project holds while its probe fails
-PROBES = [{"name": f"{FAMILY}:books.toscrape.com", "url": "https://books.toscrape.com/", "expect": "All products"}]
+PROBES = [{"name": f"{FAMILY}:www.pppinindia.gov.in", "url": SITE + "model_request_qualification",
+           "expect": "public private partnership"}]
