@@ -67,6 +67,8 @@ def do_docs(hub, s, item):
         return None, err
     links = portal.doc_links(html, name, SITE)
     mine = sorted(u for u in links if shard_of(u, shards) == shard)
+    if p.get("urls"):                                # a retry item: only these documents of the page
+        mine = [u for u in p["urls"] if u in links]
     stored = errors = 0
     for url in mine:
         if time_up():

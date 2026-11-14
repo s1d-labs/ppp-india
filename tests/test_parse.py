@@ -72,3 +72,10 @@ def test_old_index_and_shards():
     from htmltables import shard_of
     idx = old_index()
     assert len(idx) == 1863 and sum(1 for k in idx if shard_of(k, family.OLD_SHARDS) == 0) > 20
+
+
+def test_doc_links_unescape_and_backslash():
+    html = '<a href="report/News%20Apr%20&amp;%20May&#039;23.pdf">x</a><a href="assets\\doc\\iipdf\\Book.pdf">y</a>'
+    links = set(portal.doc_links(html, "p"))
+    assert "https://www.pppinindia.gov.in/report/News%20Apr%20&%20May'23.pdf" in links
+    assert "https://www.pppinindia.gov.in/assets/doc/iipdf/Book.pdf" in links
