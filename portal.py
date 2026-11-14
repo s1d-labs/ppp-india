@@ -81,3 +81,19 @@ def doc_links(html, page, base=SITE):
         if u and u.startswith(SITE) and DOC.search(u.split("?")[0]):
             out.setdefault(u, [])
     return out
+
+
+# ---- the old portal (2016-2023, Liferay "InfrastructureIndia"), read from the Wayback Machine ----
+OLD_PAIR = re.compile(r'<div class="field_(?:main_)?text(?:_2)?">([^<]*).*?</div>\s*<div class="field_(?:main_)?box(?:_2)?"[^>]*>(.*?)</div>', re.S)
+
+
+def old_project(html):
+    """[[section, label, value], ...] of one archived view-project page; [] when the page is not a project page (for example
+    the archive's "Temporarily Offline" page). The section matters: the concessionaire is under a second "Name Of Authority"."""
+    html = re.sub(r"<!--.*?-->", " ", html, flags=re.S)
+    out = []
+    for i, chunk in enumerate(re.split(r'<span class="legend">', html)):
+        section = clean(chunk.split("<", 1)[0]) if i else ""
+        for label, value in OLD_PAIR.findall(chunk):
+            out.append([section[:80], clean(label), clean(re.sub(r"<[^>]+>", " ", value))])
+    return out
