@@ -107,9 +107,9 @@ def old_index():
 
 def do_old(hub, s, item):
     p = item["payload"]
-    shard, shards = int(p["shard"]), int(p["shards"])
     index = old_index()
-    mine = sorted((pid for pid in index if shard_of(pid, shards) == shard), key=int)
+    mine = [str(x) for x in p["pids"]] if p.get("pids") else \
+        sorted((pid for pid in index if shard_of(pid, int(p["shards"])) == int(p["shard"])), key=int)   # pids: a retry item
     stored = errors = 0
     for pid in mine:
         if time_up():
@@ -121,9 +121,19 @@ def do_old(hub, s, item):
             time.sleep(wait)
             r = get(hub, s, url)
             pause(hub, 1.5)
-            fields = portal.old_project(r.text) if r is not None and r.status_code == 200 else []
-            if fields or STOP.is_set():
+            pdf = r is not None and r.status_code == 200 and r.content[:5] == b"%PDF-"
+            fields = portal.old_project(r.text) if r is not None and r.status_code == 200 and not pdf else []
+            if fields or pdf or STOP.is_set():
                 break
+        if pdf:                                    # some captures are the old site's "project details" PDF export
+            info, txt = docs.inspect(r.content, "application/pdf", f"{pid}.pdf")
+            files, extra = docs.uploads(info, r.content, txt, "wayback")
+            hub.upload_many(files)
+            hub.record(f"old:{pid}", {"kind": "old_project_pdf", "old_id": int(pid), "captured": ts, "wayback_url": url,
+                                      "text": txt[:20000], **info, **extra, "fetched_at": now()})
+            hub.clear_failure("wayback", pid)
+            stored += 1
+            continue
         if not fields:
             errors += 1
             hub.failure("wayback", pid, f"no project fields (HTTP {getattr(r, 'status_code', None)})", url=url)
