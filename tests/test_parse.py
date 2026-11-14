@@ -55,3 +55,20 @@ def test_queue():
     keys = [i["key"] for i in items]
     assert len(keys) == len(set(keys)) and all(len(k) <= 200 for k in keys)
     assert slug("ppp-projects-pipeline-states-yearwise?state=jammu%20and%20kashmir") == "ppp-projects-pipeline-states-yearwise-state-jammu-and-kashmir"
+
+
+def test_old_project_pages():
+    ppp = {(s, l): v for s, l, v in portal.old_project(page("old_project_ppp"))}
+    assert ppp[("Project Concessionaire", "Name Of Concessionaire")] == "PNC Infratech Limited"
+    assert ppp[("Project Authority", "Name Of Authority")] == "National Highways Authority of India (NHAI)"
+    assert ppp[("Project Cost", "Project Cost (Revised) in Rs Crore")] == "3,691.00"
+    trad = {(s, l): v for s, l, v in portal.old_project(page("old_project_trad"))}
+    assert trad[("Project Cost", "Project Cost (as per Contract) in Rs Crore")] == "679.00"
+    assert portal.old_project("<html>Temporarily Offline</html>") == []
+
+
+def test_old_index_and_shards():
+    from crawl import old_index
+    from htmltables import shard_of
+    idx = old_index()
+    assert len(idx) == 1863 and sum(1 for k in idx if shard_of(k, family.OLD_SHARDS) == 0) > 20

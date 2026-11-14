@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import time
 from urllib.parse import unquote
 
 from scrape_hub_client import HubClient, LocalHub, stop_flag
@@ -19,7 +20,7 @@ from scrape_hub_client import HubClient, LocalHub, stop_flag
 import docs
 import portal
 from htmltables import rid, shard_of
-from taskrun import get, now, pause, run, session, time_up
+from taskrun import STOP, get, now, pause, run, session, time_up
 
 PROJECT = os.environ.get("SCRAPE_POOL_PROJECT", "")
 SITE = os.environ.get("SITE", portal.SITE)
@@ -98,7 +99,50 @@ def do_docs(hub, s, item):
     return stored, None
 
 
-HANDLERS = {"page": do_page, "docs": do_docs}
+def old_index():
+    """{project id: [capture timestamp, original url]} of the old portal's archived view-project pages (wayback/index.json.gz,
+    built from the Wayback CDX on 2026-11-14: 1,863 ids, latest capture of each)."""
+    return json.loads(gzip.decompress(open(os.path.join(os.path.dirname(__file__), "wayback", "index.json.gz"), "rb").read()))
+
+
+def do_old(hub, s, item):
+    p = item["payload"]
+    shard, shards = int(p["shard"]), int(p["shards"])
+    index = old_index()
+    mine = sorted((pid for pid in index if shard_of(pid, shards) == shard), key=int)
+    stored = errors = 0
+    for pid in mine:
+        if time_up():
+            return None, "time up before the shard finished"
+        ts, original = index[pid]
+        url = f"https://web.archive.org/web/{ts}id_/{original}"
+        fields = []
+        for wait in (0, 60):                       # the archive answers 429 or a "Temporarily Offline" page when busy
+            time.sleep(wait)
+            r = get(hub, s, url)
+            pause(hub, 1.5)
+            fields = portal.old_project(r.text) if r is not None and r.status_code == 200 else []
+            if fields or STOP.is_set():
+                break
+        if not fields:
+            errors += 1
+            hub.failure("wayback", pid, f"no project fields (HTTP {getattr(r, 'status_code', None)})", url=url)
+            continue
+        up = hub.upload_many([(f"wayback/{pid}-{ts}.html.gz", gzip.compress(r.content), "application/gzip")])
+        flat = {}
+        for section, label, value in fields:
+            flat[label if label not in flat else f"{section}: {label}"] = value
+        mode = re.search(r"_ppp=([^&]*)", original, re.I)
+        hub.record(f"old:{pid}", {"kind": "old_project", "old_id": int(pid), "captured": ts, "wayback_url": url,
+                                  "mode": unquote(mode.group(1).replace("+", " ")) if mode else None, "fields": flat,
+                                  "pairs": fields, "bucket_path": up[0]["path"] if up else None, "fetched_at": now()})
+        stored += 1
+    if mine and errors > len(mine) // 2:
+        return None, f"{errors} of {len(mine)} archived pages did not load"
+    return stored, None
+
+
+HANDLERS = {"page": do_page, "docs": do_docs, "old": do_old}
 
 
 def local(path):

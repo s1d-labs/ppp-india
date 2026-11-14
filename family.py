@@ -72,5 +72,17 @@ PROJECTS = [
     },
 ]
 
+OLD_SHARDS = 47          # 1,863 archived old project pages, about 40 per item
+
+PROJECTS.append({
+    "name": f"{FAMILY}-wayback",
+    "title": "PPP India old project database (2016-2023) from the Wayback Machine: concessionaires, contract and revised costs",
+    "task": "crawl", "target": "web.archive.org", "env": {}, "probe": f"{FAMILY}:web.archive.org",
+    "unit_label": "shard", "record_label": "project", "threads": 1, "delay_ms": 1500, "max_workers": 2,
+    "items": [{"key": f"old/{k}-of-{OLD_SHARDS}", "payload": {"kind": "old", "shard": k, "shards": OLD_SHARDS, "expected": 40}}
+              for k in range(OLD_SHARDS)],
+})
+
 PROBES = [{"name": f"{FAMILY}:www.pppinindia.gov.in", "url": SITE + "model_request_qualification",
-           "expect": "public private partnership"}]
+           "expect": "public private partnership"},
+          {"name": f"{FAMILY}:web.archive.org", "url": "https://web.archive.org/", "expect": "Wayback Machine"}]
