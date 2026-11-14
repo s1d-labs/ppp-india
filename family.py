@@ -50,6 +50,36 @@ PAGES.update({f"ppp-projects-pipeline-states-yearwise?state={s.replace(' ', '%20
 DOCS_PER_SHARD = 60
 
 
+# document links that the first round missed (HTML entities / backslashes in the href, fixed 15 Nov 2026): fetched once
+DOC_FIXES = {
+    "ec_meetings": [
+        "https://www.pppinindia.gov.in/docs/document/vgf/RoD%20of%20the%20125th%20%20PPPAC%20&%2048th%20EC%20meeting.pdf"
+    ],
+    "pppac_meetings": [
+        "https://www.pppinindia.gov.in/docs/document/pppac/OM%20dated%2029th%20November,2023%20RoD%20of%20meeting%20of%20112th%20PPPAC%20and%2043rd%20EC%20for%20considering%20the%20proposal%20'Development%20of%20Outer%20Harbour%20container%20Terminal%20project%20including%20dredging%20and%20construction%20of%20Breakwater'%20at%20VOC%20Port,%20Tut.pdf",
+        "https://www.pppinindia.gov.in/docs/document/pppac/RoD%20of%20the%20125th%20%20PPPAC%20&%2048th%20EC%20meeting.pdf"
+    ],
+    "guidance_material_and_reference_doc": [
+        "https://www.pppinindia.gov.in/report/Guidance%20Note%20for%20IT%20PPP%20Projects%20by%20Ministry%20of%20Electronics%20&%20Information%20Technology%20(2017).pdf_1685172518.pdf",
+        "https://www.pppinindia.gov.in/report/Guidance%20Note%20for%20IT%20PPP%20Projects%20by%20Ministry%20of%20Electronics%20&%20Information%20Technology%20(2017).pdf_1686045046.pdf",
+        "https://www.pppinindia.gov.in/report/Report%20of%20the%20Committee%20on%20Revisiting%20&%20Revitalizing%20the%20Public%20Private%20Partnership%20Model%20of%20Infrastructure%20(Kelkar%20Committee%20Report).pdf_1685171086.pdf"
+    ],
+    "guidelines_for_iipdf": [
+        "https://www.pppinindia.gov.in/assets/doc/iipdf/Book_IIPDF%20Schemes%20(05.11).pdf"
+    ],
+    "": [
+        "https://www.pppinindia.gov.in/report/Infrastructure%20Newsletter%20Apr%20&%20May'23_v3_1697453314.pdf",
+        "https://www.pppinindia.gov.in/report/Infrastructure%20Newsletter%20Aug%20&%20Sep%20'23_v4_1697453790.pdf",
+        "https://www.pppinindia.gov.in/report/Infrastructure%20Newsletter%20Dec'22%20&%20Jan'23_v2_1697452789.pdf",
+        "https://www.pppinindia.gov.in/report/Infrastructure%20Newsletter%20Dec'23%20&%20Jan'24_Final_1709560431.pdf",
+        "https://www.pppinindia.gov.in/report/Infrastructure%20Newsletter%20Feb%20&%20Mar%202024_1720500514.pdf",
+        "https://www.pppinindia.gov.in/report/Infrastructure%20Newsletter%20Feb%20&%20Mar'23-Final_1697453095.pdf",
+        "https://www.pppinindia.gov.in/report/Infrastructure%20Newsletter%20Jun%20&%20Jul%20'23_v4_1697453548.pdf",
+        "https://www.pppinindia.gov.in/report/Infrastructure%20Newsletter%20Oct%20&%20Nov'23_v2_1703829312.pdf"
+    ]
+}
+
+
 def portal_items():
     items = [{"key": f"{ROUND}/page/{path or 'home'}", "payload": {"kind": "page", "path": path, "round": ROUND, "expected": n + 1}}
              for path, (n, _) in PAGES.items()]
@@ -59,6 +89,8 @@ def portal_items():
                    "payload": {"kind": "docs", "path": path, "shard": k, "shards": shards, "round": DOCS_ROUND,
                                "expected": max(1, d // shards)}}
                   for k in range(shards) if d]
+    items += [{"key": f"2026-11/docs-fix/{path or 'home'}", "payload": {"kind": "docs", "path": path, "urls": urls, "round": "2026-11",
+                                                                     "expected": len(urls)}} for path, urls in DOC_FIXES.items()]
     return items
 
 

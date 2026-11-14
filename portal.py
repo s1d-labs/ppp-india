@@ -7,6 +7,7 @@ cost, date or document changes on the site gets a new id, and the old version st
 history of changed and removed rows comes for free.
 """
 import re
+from html import unescape
 from urllib.parse import quote, urljoin
 
 from htmltables import clean, rid, tables
@@ -20,7 +21,7 @@ PIPELINE_ID = re.compile(r'class="[^"]*ask-question[^"]*"\s+data-id="(\d+)"')
 
 def absolute(href, base=SITE):
     """A link as an absolute URL with spaces and other unsafe characters quoted ('#' and javascript: give None)."""
-    href = (href or "").strip()
+    href = (href or "").strip().replace("\\", "/")         # browsers read "assets\doc\x.pdf" as "assets/doc/x.pdf"
     if not href or href.startswith(("#", "javascript:", "mailto:")):
         return None
     return quote(urljoin(base, href), safe=":/?&=%#,;+()~'@!$*")
@@ -77,6 +78,7 @@ def doc_links(html, page, base=SITE):
         for u in data.get("docs", []):
             out.setdefault(u, []).append(row_id)
     for h in re.findall(r'href="([^"]+)"', html):
+        h = unescape(h)                                  # raw attribute text: "&amp;" and "&#039;" are not part of the URL
         u = absolute(h, base)
         if u and u.startswith(SITE) and DOC.search(u.split("?")[0]):
             out.setdefault(u, [])
