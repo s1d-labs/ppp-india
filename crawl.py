@@ -152,7 +152,41 @@ def do_old(hub, s, item):
     return stored, None
 
 
-HANDLERS = {"page": do_page, "docs": do_docs, "old": do_old}
+def do_wbdoc(hub, s, item):
+    """Archived copies of portal documents (wayback/docs.json.gz: [timestamp, url, cdx digest, why]): files the current site no
+    longer links ("gone"), and every archived version of agreements and RoDs that changed under the same name ("version")."""
+    p = item["payload"]
+    caps = json.loads(gzip.decompress(open(os.path.join(os.path.dirname(__file__), "wayback", "docs.json.gz"), "rb").read()))
+    mine = [c for c in caps if shard_of(c[2], int(p["shards"])) == int(p["shard"])]
+    stored = errors = 0
+    for ts, original, digest, why in mine:
+        if time_up():
+            return None, "time up before the shard finished"
+        url = f"https://web.archive.org/web/{ts}id_/{original}"
+        for wait in (0, 60):
+            time.sleep(wait)
+            r = get(hub, s, url)
+            pause(hub, 1.5)
+            if (r is not None and r.status_code == 200 and r.content[:5] == b"%PDF-") or STOP.is_set():
+                break
+        if r is None or r.status_code != 200 or r.content[:5] != b"%PDF-":
+            errors += 1
+            hub.failure("wbdoc", digest, f"no PDF (HTTP {getattr(r, 'status_code', None)})", url=url)
+            continue
+        file = unquote(original.split("?")[0].rsplit("/", 1)[-1])
+        info, txt = docs.inspect(r.content, "application/pdf", file)
+        files, extra = docs.uploads(info, r.content, txt, "wayback-docs")
+        hub.upload_many(files)
+        hub.record(f"wbdoc:{digest}", {"kind": "wbdoc", "why": why, "captured": ts, "original": original, "file": file,
+                                       "wayback_url": url, **info, **extra, "fetched_at": now()})
+        hub.clear_failure("wbdoc", digest)
+        stored += 1
+    if mine and errors > len(mine) // 2:
+        return None, f"{errors} of {len(mine)} archived documents did not load"
+    return stored, None
+
+
+HANDLERS = {"page": do_page, "docs": do_docs, "old": do_old, "wbdoc": do_wbdoc}
 
 
 def local(path):
