@@ -79,3 +79,23 @@ def test_doc_links_unescape_and_backslash():
     links = set(portal.doc_links(html, "p"))
     assert "https://www.pppinindia.gov.in/report/News%20Apr%20&%20May'23.pdf" in links
     assert "https://www.pppinindia.gov.in/assets/doc/iipdf/Book.pdf" in links
+
+
+def test_wayback_retry_items(monkeypatch):
+    """A retry item fetches exactly its own documents; a replaced shard key finishes at once without a request."""
+    import crawl
+    want = sorted(c[2] for c in crawl.json.loads(gzip.decompress((Path(crawl.__file__).parent / "wayback" / "docs.json.gz").read_bytes()))[:3])
+    failed = []
+
+    class Hub:
+        settings = {}
+
+        def failure(self, kind, key, reason, **kw):
+            failed.append(key)
+
+    monkeypatch.setattr(crawl, "get", lambda hub, s, url: None)          # the archive does not answer
+    monkeypatch.setattr(crawl, "pause", lambda hub, floor=1.0: None)
+    monkeypatch.setattr(crawl.time, "sleep", lambda s: None)
+    assert crawl.do_wbdoc(Hub(), None, {"key": sorted(crawl.REPLACED)[-1], "payload": {"kind": "wbdoc", "shard": 13, "shards": 22}}) == (0, None)
+    n, err = crawl.do_wbdoc(Hub(), None, {"key": "x", "payload": {"kind": "wbdoc", "digests": want}})
+    assert n is None and "3 of 3" in err and sorted(set(failed)) == want

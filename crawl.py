@@ -81,6 +81,8 @@ def do_docs(hub, s, item):
             hub.failure("doc-error", url, "no answer", page=name)
             continue
         hub.clear_failure("doc-error", url)
+        if r.status_code == 200:
+            hub.clear_failure("doc-missing", url)
         if r.status_code != 200:
             hub.record(f"{rid('missing', url)}:{rnd}", {"kind": "missing", "url": url, "page": name, "file": file,
                                                        "status": r.status_code, "rows": links[url], "round": rnd, "checked_at": now()})
