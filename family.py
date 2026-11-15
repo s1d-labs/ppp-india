@@ -106,6 +106,7 @@ PROJECTS = [
 
 WBDOC_SHARDS = 22         # 764 archived documents
 OLD_SHARDS = 47          # 1,863 archived old project pages, about 40 per item
+RETRY = json.load(open(os.path.join(os.path.dirname(__file__), "wayback", "retry-2026-11-15.json")))
 
 PROJECTS.append({
     "name": f"{FAMILY}-wayback",
@@ -116,7 +117,10 @@ PROJECTS.append({
               for k in range(OLD_SHARDS)]
              # archived documents: 535 no longer linked, 229 versions of changed agreements / RoDs (wayback/docs.json.gz)
              + [{"key": f"wbdoc/{k}-of-{WBDOC_SHARDS}", "payload": {"kind": "wbdoc", "shard": k, "shards": WBDOC_SHARDS, "expected": 35}}
-                for k in range(WBDOC_SHARDS)],
+                for k in range(WBDOC_SHARDS)]
+             # pages of finished shards that failed (PDF captures before PR #4, archive "offline" pages): 20 per item
+             + [{"key": f"old-retry/2026-11-15/{i // 20}", "payload": {"kind": "old", "pids": RETRY[i:i + 20], "expected": len(RETRY[i:i + 20])}}
+                for i in range(0, len(RETRY), 20)],
 })
 
 PROBES = [{"name": f"{FAMILY}:www.pppinindia.gov.in", "url": SITE + "model_request_qualification",
