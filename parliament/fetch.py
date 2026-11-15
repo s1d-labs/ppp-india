@@ -65,8 +65,11 @@ def rs_rows(kw):
         d = json.loads(body)
         for x in d.get("records") or []:
             f, name = x.get("files") or "", x.get("eng_file_name") or ""
-            url = f.rsplit("/", 1)[0] + "/" + name.removesuffix(".pdf") if ".rajyasabha.digital" in f and name not in ("", "None") else ""
-            yield {"house": "RS", "id": x["qslno"], "term": f"RS session {x['ses_no']}", "qno": x["qno"], "qtype": x["qtype"].strip(),
+            key, stem = f.split("?")[0].rsplit("/", 1)[-1], name.removesuffix(".pdf")
+            url = f if ".rajyasabha.digital" in f else ""
+            if url and stem.startswith(key) and stem != key:      # newer answers: `files` holds a shortened key
+                url = f.split("?")[0].rsplit("/", 1)[0] + "/" + stem
+            yield {"house": "RS", "id": str(x["qslno"]), "term": f"RS session {x['ses_no']}", "qno": x["qno"], "qtype": x["qtype"].strip(),
                    "date": x["ans_date"], "ministry": x["min_name"], "subject": x["qtitle"].strip(), "url": url}
         if page + 1 >= d["_metadata"]["totalPages"]:
             break
@@ -91,11 +94,12 @@ def main():
         r["keywords"] = "; ".join(sorted(set(r["keywords"])))
         if not r["url"] or "--no-pdf" in args:
             continue
-        r["file"] = f"pdf/{r['house']}-{r['id'].replace('.', '')}.pdf"
+        htm = r["url"].split("?")[0].endswith(".htm")            # 15th and 16th Lok Sabha answers are HTML pages
+        r["file"] = f"pdf/{r['house']}-{r['id'].replace('.', '')}.{'htm' if htm else 'pdf'}"
         path = os.path.join(out, r["file"])
         if not os.path.exists(path):
             body = get(r["url"])
-            if body is None or body[:5] != b"%PDF-":
+            if body is None or not (htm or body[:5] == b"%PDF-"):
                 print(f"  no PDF: {r['url']}", file=sys.stderr)
                 r["file"] = ""
                 continue
