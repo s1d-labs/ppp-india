@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -21,6 +22,7 @@ LS_API = "https://sansad.in/api_ls/question/qetFilteredQuestionsAns"
 RS_API = "https://integration.rajyasabha.digital/rsdebate/api/question/search-questions"
 DELAY = 2.0
 UA = {"User-Agent": "Mozilla/5.0 (research; PPP question index)"}
+GAPS = []                                            # search pages that did not load: the index is incomplete
 FIELDS = ["house", "id", "term", "qno", "qtype", "date", "ministry", "subject", "keywords", "url", "file", "bytes", "sha256"]
 
 
@@ -30,6 +32,12 @@ def get(url, tries=3):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
                 return r.read()
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):                 # the file is not there: trying again does not help
+                print(f"  {e.code}: {url}", file=sys.stderr)
+                return None
+            print(f"  retry {i + 1}: {e}", file=sys.stderr)
+            time.sleep(10 * (i + 1))
         except Exception as e:                       # noqa: BLE001 - network errors of any kind: wait and try again
             print(f"  retry {i + 1}: {e}", file=sys.stderr)
             time.sleep(10 * (i + 1))
@@ -43,6 +51,7 @@ def ls_rows(kw):
             q = urllib.parse.urlencode({"loksabhaNo": ls, "pageNo": page, "pageSize": 100, "locale": "en", "keyWord": kw})
             body = get(f"{LS_API}?{q}")
             if body is None:
+                GAPS.append(f"LS{ls} '{kw}' page {page}")
                 break
             d = json.loads(body)[0]
             for x in d["listOfQuestions"]:
@@ -61,6 +70,7 @@ def rs_rows(kw):
                                     "matchesOn": "exactMatch", "page": page, "size": 100})
         body = get(f"{RS_API}?{q}")
         if body is None:
+            GAPS.append(f"RS '{kw}' page {page}")
             break
         d = json.loads(body)
         for x in d.get("records") or []:
@@ -111,6 +121,8 @@ def main():
         w.writeheader()
         w.writerows(sorted(rows.values(), key=lambda r: (r["house"], r["date"][6:], r["date"][3:5], r["date"][:2])))   # dates are DD.MM.YYYY
     print(f"{len(rows)} questions, {sum(1 for r in rows.values() if r.get('file'))} PDFs in {out}", file=sys.stderr)
+    if GAPS:
+        sys.exit(f"index incomplete, these search pages did not load (run again): {'; '.join(GAPS)}")
 
 
 if __name__ == "__main__":

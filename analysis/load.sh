@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 # Copy this family's records from scrape_hub into ws_trideep (schema ppp) for analysis and Metabase. Re-runnable.
-set -e
+set -eo pipefail          # without pipefail a failed export (Postgres restart) loads empty tables
 psql -q -d ws_trideep -c "create schema if not exists ppp"
 for t in rows docs missing pages old; do psql -q -d ws_trideep -c "drop table if exists ppp.raw_$t cascade"; done
 psql -q -d ws_trideep -c "create table ppp.raw_rows (record_id text primary key, data jsonb, scraped_at timestamptz)"

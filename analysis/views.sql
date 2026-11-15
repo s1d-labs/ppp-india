@@ -90,7 +90,7 @@ select (data->>'old_id')::int as old_id, data->>'mode' as mode, data->>'captured
        ppp.dt(coalesce(data->'fields'->>'Concession Agreement Signing Date', data->'fields'->>'Date Of Award Of Project')) as awarded_on,
        ppp.num(data->'fields'->>'Concession Duration (In Months)') as concession_months, data->'fields'->>'Bid Parameter' as bid_parameter,
        data->'fields'->>'Type Of Grant' as grant_type, ppp.num(data->'fields'->>'Grant Amount in Rs Crore') as grant_cr, data->'fields' as fields
-from ppp.raw_old;
+from ppp.raw_old where data->>'kind' in ('old_project', 'old_project_pdf');
 
 -- small materialized copies with trigram indexes (fuzzy name joins); load.sh rebuilds them
 create extension if not exists pg_trgm;

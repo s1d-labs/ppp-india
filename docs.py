@@ -1,6 +1,6 @@
 """Shared document handling for every source in this family: look at downloaded bytes, decide where they go in the bucket.
 
-OCR is off (personal rule: OCR = False). A PDF without a usable text layer is stored under ocr-needed/ so a later OCR pass finds
+No OCR here. A PDF without a usable text layer is stored under ocr-needed/ so a later OCR pass finds
 every scan in one place; a PDF with text is stored under docs/ and its text under text/ (gzip), so analysis never re-parses PDFs.
 """
 import gzip
@@ -9,7 +9,6 @@ import io
 import logging
 import re
 
-OCR = False
 TEXT_PAGES = 80            # read text from at most this many pages (big scans are slow and have no text anyway)
 HEAD_CHARS = 1500          # text kept in the record itself (searchable in Metabase); the full text goes to the bucket
 
@@ -80,23 +79,19 @@ def inspect(data, content_type="", name=""):
     return info, txt
 
 
-def uploads(info, data, txt, section, prefix=""):
+def uploads(info, data, txt, section):
     """[(path, bytes, content type)] for upload_many, and the record fields that point to them. Content-addressed: the same
     bytes always land at the same path, so a file seen twice (or in the Wayback Machine too) is stored once."""
     sha, kind = info["sha256"], info["type"]
     scan = kind == "pdf" and not info.get("has_text")
     base = "ocr-needed" if scan else "docs"
-    path = f"{prefix}{base}/{section}/{sha}.{kind}"
+    path = f"{base}/{section}/{sha}.{kind}"
     ctype = {"pdf": "application/pdf", "html": "text/html"}.get(kind, "application/octet-stream")
     files = [(path, data, ctype)]
     fields = {"bucket_path": path, "ocr_needed": scan}
     if txt:
-        tpath = f"{prefix}text/{sha}.txt.gz"
+        tpath = f"text/{sha}.txt.gz"
         files.append((tpath, gzip.compress(txt.encode("utf-8", "replace")), "application/gzip"))
         fields.update(text_path=tpath, text_head=txt[:HEAD_CHARS])
     return files, fields
 
-
-def is_not_found_page(data):
-    """WBMSC (Apache) answers a missing file with a small HTML 'Object not found!' page."""
-    return len(data) < 4000 and b"Object not found" in data
