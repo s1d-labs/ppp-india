@@ -107,8 +107,15 @@ def old_index():
     return json.loads(gzip.decompress(open(os.path.join(os.path.dirname(__file__), "wayback", "index.json.gz"), "rb").read()))
 
 
+# shards that ran out of time on every try (a cut-off shard starts again from the start): their missing pages and documents
+# are smaller retry items now, so these keys finish at once
+REPLACED = set(json.load(open(os.path.join(os.path.dirname(__file__), "wayback", "retry-2026-11-15b.json")))["replaced"])
+
+
 def do_old(hub, s, item):
     p = item["payload"]
+    if item["key"] in REPLACED:
+        return 0, None
     index = old_index()
     mine = [str(x) for x in p["pids"]] if p.get("pids") else \
         sorted((pid for pid in index if shard_of(pid, int(p["shards"])) == int(p["shard"])), key=int)   # pids: a retry item
@@ -159,7 +166,10 @@ def do_wbdoc(hub, s, item):
     longer links ("gone"), and every archived version of agreements and RoDs that changed under the same name ("version")."""
     p = item["payload"]
     caps = json.loads(gzip.decompress(open(os.path.join(os.path.dirname(__file__), "wayback", "docs.json.gz"), "rb").read()))
-    mine = [c for c in caps if shard_of(c[2], int(p["shards"])) == int(p["shard"])]
+    if item["key"] in REPLACED:
+        return 0, None
+    mine = [c for c in caps if c[2] in p["digests"]] if p.get("digests") else \
+        [c for c in caps if shard_of(c[2], int(p["shards"])) == int(p["shard"])]          # digests: a retry item
     stored = errors = 0
     for ts, original, digest, why in mine:
         if time_up():

@@ -107,6 +107,7 @@ PROJECTS = [
 WBDOC_SHARDS = 22         # 764 archived documents
 OLD_SHARDS = 47          # 1,863 archived old project pages, about 40 per item
 RETRY = json.load(open(os.path.join(os.path.dirname(__file__), "wayback", "retry-2026-11-15.json")))
+SLOW = json.load(open(os.path.join(os.path.dirname(__file__), "wayback", "retry-2026-11-15b.json")))   # 3 shards that ran out of time
 
 PROJECTS.append({
     "name": f"{FAMILY}-wayback",
@@ -120,7 +121,12 @@ PROJECTS.append({
                 for k in range(WBDOC_SHARDS)]
              # pages of finished shards that failed (PDF captures before PR #4, archive "offline" pages): 20 per item
              + [{"key": f"old-retry/2026-11-15/{i // 20}", "payload": {"kind": "old", "pids": RETRY[i:i + 20], "expected": len(RETRY[i:i + 20])}}
-                for i in range(0, len(RETRY), 20)],
+                for i in range(0, len(RETRY), 20)]
+             # what the 3 slow shards still miss, 5 per item (the shards themselves now finish at once: crawl.REPLACED)
+             + [{"key": f"old-retry/2026-11-15b/{i // 5}", "payload": {"kind": "old", "pids": SLOW["pids"][i:i + 5], "expected": len(SLOW["pids"][i:i + 5])}}
+                for i in range(0, len(SLOW["pids"]), 5)]
+             + [{"key": f"wbdoc-retry/2026-11-15b/{i // 5}", "payload": {"kind": "wbdoc", "digests": SLOW["digests"][i:i + 5], "expected": len(SLOW["digests"][i:i + 5])}}
+                for i in range(0, len(SLOW["digests"]), 5)],
 })
 
 PROBES = [{"name": f"{FAMILY}:www.pppinindia.gov.in", "url": SITE + "model_request_qualification",
