@@ -12,7 +12,6 @@ import json
 import os
 import re
 import sys
-import time
 from urllib.parse import unquote
 
 from scrape_hub_client import HubClient, LocalHub, stop_flag
@@ -109,15 +108,8 @@ def old_index():
     return json.loads(gzip.decompress(open(os.path.join(os.path.dirname(__file__), "wayback", "index.json.gz"), "rb").read()))
 
 
-# shards that ran out of time on every try (a cut-off shard starts again from the start): their missing pages and documents
-# are smaller retry items now, so these keys finish at once
-REPLACED = set(json.load(open(os.path.join(os.path.dirname(__file__), "wayback", "retry-2026-11-15b.json")))["replaced"])
-
-
 def do_old(hub, s, item):
     p = item["payload"]
-    if item["key"] in REPLACED:
-        return 0, None
     index = old_index()
     mine = [str(x) for x in p["pids"]] if p.get("pids") else \
         sorted((pid for pid in index if shard_of(pid, int(p["shards"])) == int(p["shard"])), key=int)   # pids: a retry item
@@ -129,12 +121,13 @@ def do_old(hub, s, item):
         url = f"https://web.archive.org/web/{ts}id_/{original}"
         fields = []
         for wait in (0, 60):                       # the archive answers 429 or a "Temporarily Offline" page when busy
-            time.sleep(wait)
+            if STOP.wait(wait):                    # a stop signal ends the wait at once
+                return None, "stopped by signal"
             r = get(hub, s, url)
             pause(hub, 1.5)
             pdf = r is not None and r.status_code == 200 and r.content[:5] == b"%PDF-"
             fields = portal.old_project(r.text) if r is not None and r.status_code == 200 and not pdf else []
-            if fields or pdf or STOP.is_set():
+            if fields or pdf:
                 break
         if pdf:                                    # some captures are the old site's "project details" PDF export
             info, txt = docs.inspect(r.content, "application/pdf", f"{pid}.pdf")
@@ -168,8 +161,6 @@ def do_wbdoc(hub, s, item):
     longer links ("gone"), and every archived version of agreements and RoDs that changed under the same name ("version")."""
     p = item["payload"]
     caps = json.loads(gzip.decompress(open(os.path.join(os.path.dirname(__file__), "wayback", "docs.json.gz"), "rb").read()))
-    if item["key"] in REPLACED:
-        return 0, None
     mine = [c for c in caps if c[2] in p["digests"]] if p.get("digests") else \
         [c for c in caps if shard_of(c[2], int(p["shards"])) == int(p["shard"])]          # digests: a retry item
     stored = errors = 0
@@ -178,10 +169,11 @@ def do_wbdoc(hub, s, item):
             return None, "time up before the shard finished"
         url = f"https://web.archive.org/web/{ts}id_/{original}"
         for wait in (0, 60):
-            time.sleep(wait)
+            if STOP.wait(wait):                    # a stop signal ends the wait at once
+                return None, "stopped by signal"
             r = get(hub, s, url)
             pause(hub, 1.5)
-            if (r is not None and r.status_code == 200 and r.content[:5] == b"%PDF-") or STOP.is_set():
+            if r is not None and r.status_code == 200 and r.content[:5] == b"%PDF-":
                 break
         if r is None or r.status_code != 200 or r.content[:5] != b"%PDF-":
             errors += 1
