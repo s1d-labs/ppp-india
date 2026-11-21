@@ -82,7 +82,7 @@ def test_doc_links_unescape_and_backslash():
 
 
 def test_wayback_retry_items(monkeypatch):
-    """A retry item fetches exactly its own documents; a replaced shard key finishes at once without a request."""
+    """A retry item fetches exactly its own documents; a stop signal ends the item without a false failure."""
     import crawl
     want = sorted(c[2] for c in crawl.json.loads(gzip.decompress((Path(crawl.__file__).parent / "wayback" / "docs.json.gz").read_bytes()))[:3])
     failed = []
@@ -95,7 +95,10 @@ def test_wayback_retry_items(monkeypatch):
 
     monkeypatch.setattr(crawl, "get", lambda hub, s, url: None)          # the archive does not answer
     monkeypatch.setattr(crawl, "pause", lambda hub, floor=1.0: None)
-    monkeypatch.setattr(crawl.time, "sleep", lambda s: None)
-    assert crawl.do_wbdoc(Hub(), None, {"key": sorted(crawl.REPLACED)[-1], "payload": {"kind": "wbdoc", "shard": 13, "shards": 22}}) == (0, None)
+    monkeypatch.setattr(crawl.STOP, "wait", lambda t=None: False)
     n, err = crawl.do_wbdoc(Hub(), None, {"key": "x", "payload": {"kind": "wbdoc", "digests": want}})
     assert n is None and "3 of 3" in err and sorted(set(failed)) == want
+    failed.clear()
+    monkeypatch.setattr(crawl.STOP, "wait", lambda t=None: True)
+    assert crawl.do_wbdoc(Hub(), None, {"key": "x", "payload": {"kind": "wbdoc", "digests": want}}) == (None, "stopped by signal")
+    assert failed == []
